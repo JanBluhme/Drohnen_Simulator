@@ -1,0 +1,60 @@
+resources/generated_src/%.hpp: resources/generated_src/%.cpp
+
+resources/generated_src/%.cpp: INPUT_FILE   =$(@:resources/generated_src/%.cpp=resources/data/%)
+resources/generated_src/%.cpp: FUNCTION_NAME=$(subst -,_,$(basename $(basename $(notdir $(@)))))
+resources/generated_src/%.cpp: REL_DIR      =$(dir $(INPUT_FILE:resources/data/%=%))
+resources/generated_src/%.cpp: NAMESPACE    =$(subst /,::,$(REL_DIR:%/=%))
+resources/generated_src/%.cpp: HEADER_FILE  =$(@:resources/generated_src/%.cpp=%.hpp)
+resources/generated_src/%.cpp: resources/data/% resources/makebinary $(MAKE_INCLUDES)
+	@$(COLOR_ECHO) F "$(SHELL_COLOR_COMPILE_COMMANDS)" MAKEBINARY
+	@echo AT: $(@)
+	@echo IF: $(INPUT_FILE)
+	@echo FN: $(FUNCTION_NAME)
+	@echo RD: $(REL_DIR)
+	@echo NS: $(NAMESPACE)
+	@echo HF: $(HEADER_FILE)
+	@mkdir -p $(dir $(@))
+	resources/makebinary hpp $(INPUT_FILE) $(NAMESPACE) $(FUNCTION_NAME) > $(@:%.cpp=%.hpp)
+	resources/makebinary cpp $(INPUT_FILE) $(NAMESPACE) $(FUNCTION_NAME) $(HEADER_FILE) > $@
+
+.PRECIOUS: $(OBJ)/%.o
+$(OBJ)/%.o:  AUTOMATIC_DEPENDENCY=$(@:$(OBJ)/%.o=$(DEP)/%.dep)
+$(BIN)/%.so: AUTOMATIC_DEPENDENCY=$(@:$(BIN)/%.so=$(DEP)/%.dep)
+
+$(OBJ)/%.o: $(addprefix $(SRC)/,%.cpp) $(MAKE_INCLUDES) $(addprefix $(GEN)/,$(GENERATED_HEADERS)) git.hash
+	@$(COMPILE) F $(CXXFLAGS)
+
+$(OBJ)/%.o: $(addprefix imgui/src/,%.cpp) $(MAKE_INCLUDES)
+	@$(COMPILE) F $(CXXFLAGS)
+
+$(OBJ)/resources/%.o : $(addprefix resources/generated_src/,%.cpp)
+	@$(COMPILE) F $(CXXFLAGS)
+
+$(BIN)/%: $(addprefix $(OBJ)/,%.o $(OBJECTS))
+	@$(COLOR_ECHO) F "$(SHELL_COLOR_LINK)" LINK
+	@mkdir -p $(dir $@)
+	$(CXXC) $(CXXFLAGS) -o $@ $^ $(LFLAGS)
+
+$(BIN)/%.so: %.cpp $(addprefix $(SRC)/,$(SOCKET_SOURCES)) $(MAKE_INCLUDES) $(addprefix $(GEN)/,$(GENERATED_HEADERS))
+	@$(COMPILE_SO) F $(CXXFLAGS_SO)
+
+$(GEN)/%_environment_template.hpp: CLASS_NAME=$(@:$(GEN)/%_environment_template.hpp=%_environment)
+$(GEN)/%_environment_template.hpp: %.idl
+	@$(COLOR_ECHO) F "$(SHELL_COLOR_COMPILE_ENVIRONMENT)" COMPILE_ENVIRONMENT
+	@mkdir -p $(dir $@)
+	$(GENERATOR) --generator=cpp_environment --input=$< --output=$@ --class_name=$(CLASS_NAME)
+	clang-format -i $@
+
+$(GEN)/%_commands.hpp: %.idl
+	@$(COLOR_ECHO) F "$(SHELL_COLOR_COMPILE_COMMANDS)" COMPILE_COMMANDS
+	@mkdir -p $(dir $@)
+	$(GENERATOR) --generator=cpp_command --input=$< --output=$@ \
+		--type \
+		--inject \
+		--include \
+		--inline_ostream \
+		--inline_serialize \
+		--inline_compare \
+		--inline_equal \
+		--command_variant
+	clang-format -i $@

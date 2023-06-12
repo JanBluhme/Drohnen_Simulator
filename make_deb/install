@@ -1,0 +1,7 @@
+#!/bin/sh
+
+cp bin/simulator          /usr/bin/playground
+cp bin/librobot/libsim.so /usr/lib/
+mkdir -p /usr/include/sim
+cp inc/math/Vertex.hpp    /usr/include/sim/
+cat librobot/libsim.hpp | sed -e 's/#include \"math\/Vertex.hpp\"/#include <sim\/Vertex.hpp>/' > /usr/include/sim/libsim.hpp

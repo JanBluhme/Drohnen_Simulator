@@ -1,0 +1,9 @@
+[submodule "recreated_goon"]
+	path = recreated_goon
+	url = git@gitlab.hs-pforzheim.de:christoph.ussfeller/recreated_goon.git
+	branch = master
+[submodule "cmake_helpers"]
+	path = cmake_helpers
+	url = git@gitlab.hs-pforzheim.de:dominic.poeschko/cmake_helpers.git
+	branch = master
+

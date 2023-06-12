@@ -1,0 +1,343 @@
+[[inject{
+	#include <vector>
+	#include <string>
+	#include <variant>
+	#include <optional>
+	#include <map>
+	#include <functional>
+	#include "math/Vertex.hpp"
+}]]
+
+namespace robo {
+
+struct RobotId {
+	uint32_t value;
+	
+	[[inject{
+		RobotId next() const {
+			return {value + 1};
+		}
+	}]]
+};
+
+struct LocalVelocityReference {
+	Vertex<double,2> velocity;
+	double           angular_velocity;
+};
+struct LocalVelocityFixedFrameReference {
+	Vertex<double,2> velocity;
+	double           angular_velocity;
+	double           fixed_orientation;
+};
+
+struct RobotView {
+	RobotId                id;
+	std::string            name;
+	Vertex<double,2>       position;
+	Vertex<double,2>       velocity;
+	double                 orientation;
+	double                 angular_velocity;
+	int                    score;
+};
+
+struct DebugLine {
+	Vertex<double,3> start;
+	Vertex<double,3> end;
+	Vertex<double,3> color_start;
+	Vertex<double,3> color_end;
+	double           thickness;
+	
+	[[inject{
+        static DebugLine make(
+			  Vertex<double,2> const& start
+			, Vertex<double,2> const& end
+			, Vertex<double,3> const& color
+			, double                  width
+			, double                  height
+		) {
+			 return {
+                  {start[0], start[1], height}
+			    , {end[0], end[1], height}
+			    , color
+			    , color
+			    , width
+             };
+		}
+	}]]
+};
+
+struct RobotDescriptor {
+	struct KinematicModel {
+		double velocity_max_x;
+		double velocity_max_y;
+		double angular_velocity_max;
+		double acceleration_max_x;
+		double acceleration_max_y;
+		double acceleration_max_angular;
+	};
+	struct BodyModel {
+		double              mass;
+		double              radius;
+		std::vector<double> distance_sensor_angles;
+	};
+	struct GuestModel{
+		double max_pick_distance;
+		double max_drop_distance;
+		double max_visibility_distance;
+		double max_pick_velocity;
+		double max_drop_velocity;
+	};
+	struct VisibilityModel {
+		double max_guest_distance;
+		double max_robot_distance;
+	};
+	KinematicModel  kinematics;
+	BodyModel       body;
+	GuestModel      guest;
+	VisibilityModel visibility;
+};
+
+Command RegisterRobotCommand {
+	Request {
+		std::string name;
+	};
+	Response {
+		struct Result {
+			RobotDescriptor descriptor;
+			RobotId         registration;
+		};
+		std::optional<Result> result;
+	};
+};
+Command DeregisterRobotCommand {
+	Request {
+		RobotId id;
+	};
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+		};
+		Result result;
+	};
+};
+Command LocalVelocityCommand {
+	Request {
+		RobotId           id;
+		Vertex<double, 2> velocity;
+		double            angular_velocity;
+	};
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+			, KINEMATIC_LIMITS_EXCEEDED
+		};
+		Result result;
+	};
+};
+Command LocalVelocityFixedFrameCommand {
+	Request {
+		RobotId           id;
+		Vertex<double, 2> velocity;
+		double            angular_velocity;
+	};
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+			, KINEMATIC_LIMITS_EXCEEDED
+		};
+		Result result;
+	};
+};
+
+Command QuerySegmentTraversableCommand {
+	Request {
+		RobotId           id;
+		Vertex<double, 2> start;
+		Vertex<double, 2> end;
+	};
+	Response {
+		enum Result {
+			  TRAVERSABLE
+			, BLOCKED_BY_ROBOT
+			, BLOCKED_BY_OBSTACLE
+			, UNKNOWN_ROBOT
+		};
+		Result result;
+	};
+};
+
+struct Vision {
+	struct Guest {
+		Vertex<double, 2> position;
+		Vertex<double, 2> target_position;
+		int               score_on_arrival;
+	};
+	std::vector<RobotView> robots;
+	std::vector<Guest>     available_guests;
+	std::vector<double>    distance_sensor_values;
+	std::optional<Guest>   guest;
+};
+
+Command QueryVisionCommand {
+	Request {
+		RobotId id;
+    };
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+		};
+		Result                result;
+        std::optional<Vision> vision;
+	};
+};
+
+Command PickTaxiGuestCommand {
+	Request {
+		RobotId id;
+    };
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+			, NO_GUEST_IN_RANGE
+			, TOO_FAST_TO_PICK
+		};
+		Result                       result;
+        std::optional<Vision::Guest> picked_guest;
+	};
+};
+Command DropTaxiGuestCommand {
+	Request {
+		RobotId id;
+    };
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+			, NO_GUEST_TO_DROP
+			, TOO_FAST_TO_DROP
+		};
+		Result result;
+        int    drop_score;
+	};
+};
+
+Command SetDebugLinesCommand {
+	Request {
+		RobotId                id;
+		std::vector<DebugLine> lines;
+	};
+	Response {
+		enum Result {
+			  SUCCESS
+			, UNKNOWN_ROBOT
+		};
+		Result result;
+	};
+};
+
+[[inject{
+template<typename OS, typename T>
+OS& printOptional(OS& os, std::optional<T> const& x) {
+	os << '[';
+	if(x) {
+		os << *x;
+	}
+	os << ']';
+	return os;
+}
+
+template<typename OS, typename I>
+OS& print_range(OS& os, I first, I last) {
+	os << '[';
+	if(first != last) {
+		os << *first;
+		++first;
+		for(; first != last; ++first) {
+			os << ", " << *first;
+		}
+	}
+	os << ']';
+	return os;
+}
+
+template<typename OS, typename T>
+OS& printVector(OS& os, std::vector<T> const& x) {
+	print_range(os, x.begin(), x.end());
+	return os;
+}
+template<typename OS, typename T, std::size_t N>
+OS& printArray(OS& os, std::array<T, N> const& x) {
+	print_range(os, x.begin(), x.end());
+	return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::vector<DebugLine> const& x) {
+    printVector(os, x);
+    return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::vector<RobotView> const& x) {
+    printVector(os, x);
+    return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::vector<Vision::Guest> const& x) {
+    printVector(os, x);
+    return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::optional<Vision::Guest> const& x) {
+    printOptional(os, x);
+    return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::vector<double> const& x) {
+    printVector(os, x);
+    return os;
+}
+
+template<typename OS, std::size_t N>
+OS& operator<<(OS& os, std::array<double, N> const& x) {
+    printArray(os, x);
+    return os;
+}
+
+template<typename OS>
+OS& operator<<(OS& os, std::optional<RobotId> const& x) {
+    printOptional(os, x);
+    return os;
+}
+template<typename OS>
+OS& operator<<(OS& os, std::optional<LocalVelocityCommand::Response::Result> const& x) {
+    printOptional(os, x);
+    return os;
+}
+template<typename OS>
+OS& operator<<(OS& os, std::optional<QueryVisionCommand::Response::Result> const& x) {
+    printOptional(os, x);
+    return os;
+}
+template<typename OS>
+OS& operator<<(OS& os, std::optional<Vision> const& x) {
+    printOptional(os, x);
+    return os;
+}
+template<typename OS>
+OS& operator<<(OS& os, std::optional<robo::RegisterRobotCommand::Response::Result> const& x) {
+    printOptional(os, x);
+    return os;
+}
+
+}]]
+
+} /** namespace robo */

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+function make_deb() {
+    local VERSION=${1}
+    #fix ldconfig not found...
+    export PATH=/sbin:${PATH}
+    checkinstall \
+        --pkgname roboplayground \
+        --pkgversion ${VERSION} \
+        --maintainer student@debian \
+        --requires gcc,kate,konsole,libsdl2-dev,libsdl2-ttf-dev,libsdl2-image-dev,libglew-dev \
+        --default \
+        --addso \
+        --nodoc \
+        --arch amd64 \
+        --backup \
+        --deldesc=yes \
+        --delspec=yes \
+        --install=no \
+        make_deb/install
+}
+
+VERSION="1"
+make_deb ${VERSION}
+
+ODIR=debian
+mkdir -p ${ODIR}
+mv *.deb ${ODIR}
